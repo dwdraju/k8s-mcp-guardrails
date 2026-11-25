@@ -1,0 +1,39 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: agent-namespace-guardrails
+policies:
+  - ../10-agent-namespace-naming.yaml
+  - ../20-mutate-namespace-baseline.yaml
+  - ../30-generate-resourcequota.yaml
+  - ../50-deny-cluster-admin-bindings.yaml
+  - ../60-disallow-privileged-workloads.yaml
+resources:
+  - resources.yaml
+userinfo: userinfo-agent.yaml
+results:
+  # naming / ownership
+  - {policy: agent-namespace-naming, rule: name-pattern, resources: [team-payments-dev-a1b2], kind: Namespace, result: pass}
+  - {policy: agent-namespace-naming, rule: name-pattern, resources: [payments-prod, team-payments-prod-a1b2], kind: Namespace, result: fail}
+  - {policy: agent-namespace-naming, rule: required-labels, resources: [team-payments-dev-a1b2], kind: Namespace, result: pass}
+  - {policy: agent-namespace-naming, rule: required-labels, resources: [team-payments-dev-nolab], kind: Namespace, result: fail}
+  - {policy: agent-namespace-naming, rule: ttl-format, resources: [team-payments-dev-badttl], kind: Namespace, result: fail}
+  - {policy: agent-namespace-naming, rule: ttl-format, resources: [team-payments-dev-a1b2], kind: Namespace, result: pass}
+  # born locked down
+  - policy: mutate-namespace-baseline
+    rule: pod-security-restricted
+    resources: [team-payments-dev-a1b2]
+    kind: Namespace
+    patchedResources: patched-namespace.yaml
+    result: pass
+  - policy: generate-resourcequota
+    rule: add-quota
+    resources: [team-payments-dev-a1b2]
+    kind: Namespace
+    generatedResource: generated-quota.yaml
+    result: pass
+  # privilege safety
+  - {policy: deny-cluster-admin-bindings, rule: no-cluster-admin, resources: [agent-is-root], kind: ClusterRoleBinding, result: fail}
+  - {policy: deny-cluster-admin-bindings, rule: no-cluster-admin, resources: [agent-can-view], kind: ClusterRoleBinding, result: pass}
+  - {policy: disallow-privileged-workloads, rule: no-privileged-or-host-access, resources: [root-shell], kind: Pod, result: fail}
+  - {policy: disallow-privileged-workloads, rule: no-privileged-or-host-access, resources: [web], kind: Pod, result: pass}

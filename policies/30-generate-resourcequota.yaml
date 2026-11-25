@@ -1,0 +1,27 @@
+# Resource safety. This is the article's policy, with two additions:
+#  - scoped to team-* so system namespaces are untouched
+#  - synchronize: true so a deleted/edited quota is put back immediately
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: generate-resourcequota
+spec:
+  rules:
+    - name: add-quota
+      match:
+        any:
+          - resources:
+              kinds: ["Namespace"]
+              names: ["team-*"]
+      generate:
+        apiVersion: v1
+        kind: ResourceQuota
+        name: default-quota
+        namespace: "{{request.object.metadata.name}}"
+        synchronize: true
+        data:
+          spec:
+            hard:
+              requests.cpu: "4"
+              requests.memory: 8Gi
+              pods: "20"

@@ -1,0 +1,10 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: UserInfo
+metadata:
+  name: namespace-agent
+userInfo:
+  username: system:serviceaccount:agents:namespace-agent
+  groups:
+    - system:serviceaccounts
+    - system:serviceaccounts:agents
+    - system:authenticated

@@ -1,0 +1,30 @@
+# "The namespaced verbs it needs inside the namespaces it owns": RBAC cannot
+# say "every namespace named team-*", so Kyverno creates the binding as each
+# namespace is born.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: generate-agent-rolebinding
+spec:
+  rules:
+    - name: bind-namespace-agent
+      match:
+        any:
+          - resources:
+              kinds: ["Namespace"]
+              names: ["team-*"]
+      generate:
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        name: namespace-agent-workloads
+        namespace: "{{request.object.metadata.name}}"
+        synchronize: true
+        data:
+          roleRef:
+            apiGroup: rbac.authorization.k8s.io
+            kind: ClusterRole
+            name: agent-workload-editor
+          subjects:
+            - kind: ServiceAccount
+              name: namespace-agent
+              namespace: agents

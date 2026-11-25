@@ -1,0 +1,52 @@
+# Every team-* namespace is born with Pod Security Admission at "restricted",
+# whatever the request asked for, and with an enforced TTL.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: mutate-namespace-baseline
+  annotations:
+    policies.kyverno.io/title: Pod Security + TTL labels for team namespaces
+spec:
+  webhookConfiguration:
+    failurePolicy: Fail
+  rules:
+    - name: pod-security-restricted
+      match:
+        any:
+          - resources:
+              kinds: ["Namespace"]
+              names: ["team-*"]
+              operations: ["CREATE", "UPDATE"]
+      mutate:
+        patchStrategicMerge:
+          metadata:
+            labels:
+              pod-security.kubernetes.io/enforce: restricted
+              pod-security.kubernetes.io/enforce-version: latest
+              pod-security.kubernetes.io/warn: restricted
+              pod-security.kubernetes.io/audit: restricted
+    # Lifecycle: translate the human-friendly `ttl` label into the label that
+    # Kyverno's cleanup controller acts on. Expiry then happens on its own
+    # schedule, regardless of what the agent does.
+    # GitOps-managed namespaces are excluded: deleting them would just make
+    # Flux recreate them from git -- they expire by removing the file instead.
+    - name: ttl-cleanup
+      match:
+        any:
+          - resources:
+              kinds: ["Namespace"]
+              names: ["team-*"]
+              operations: ["CREATE", "UPDATE"]
+      preconditions:
+        all:
+          - key: "{{ request.object.metadata.labels.ttl || '' }}"
+            operator: NotEquals
+            value: ""
+          - key: "{{ request.object.metadata.labels.\"provisioned-via\" || '' }}"
+            operator: NotEquals
+            value: gitops
+      mutate:
+        patchStrategicMerge:
+          metadata:
+            labels:
+              cleanup.kyverno.io/ttl: "{{ request.object.metadata.labels.ttl }}"

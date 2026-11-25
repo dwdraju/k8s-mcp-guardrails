@@ -1,0 +1,24 @@
+# Network safety: traffic in and out of a team namespace is denied unless a
+# policy explicitly allows it.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: generate-default-deny-networkpolicy
+spec:
+  rules:
+    - name: add-default-deny
+      match:
+        any:
+          - resources:
+              kinds: ["Namespace"]
+              names: ["team-*"]
+      generate:
+        apiVersion: networking.k8s.io/v1
+        kind: NetworkPolicy
+        name: default-deny-all
+        namespace: "{{request.object.metadata.name}}"
+        synchronize: true
+        data:
+          spec:
+            podSelector: {}
+            policyTypes: ["Ingress", "Egress"]

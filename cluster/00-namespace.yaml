@@ -1,0 +1,8 @@
+# Home of every agent identity. One ServiceAccount per agent, so the audit log
+# attributes each action to a specific agent rather than a shared bucket.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agents
+  labels:
+    pod-security.kubernetes.io/enforce: restricted

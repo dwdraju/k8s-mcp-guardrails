@@ -1,0 +1,127 @@
+# ---------------------------------------------------------------------------
+# Interactive agent identity: the MCP server runs with a short-lived
+# TokenRequest token for this ServiceAccount (see scripts/agent-kubeconfig.sh).
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: namespace-agent
+  namespace: agents
+automountServiceAccountToken: false
+---
+# Verbatim from the article. "create" cannot be scoped by resourceNames, so this
+# role can create ANY namespace -- which is why the admission policies exist.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: agent-namespace-provisioner
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "create"]   # create can't be scoped by resourceNames
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: agent-namespace-provisioner
+subjects:
+  - kind: ServiceAccount
+    name: namespace-agent
+    namespace: agents
+roleRef:
+  kind: ClusterRole
+  name: agent-namespace-provisioner
+  apiGroup: rbac.authorization.k8s.io
+---
+# Read surface for the always-on MCP tools: status of guardrail objects and
+# workloads. No secrets, no write verbs.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: agent-cluster-reader
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "events", "resourcequotas", "limitranges", "services"]
+    verbs: ["get", "list"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["rolebindings"]
+    verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list"]
+  - apiGroups: ["source.toolkit.fluxcd.io"]
+    resources: ["gitrepositories"]
+    verbs: ["get", "list"]
+  - apiGroups: ["kustomize.toolkit.fluxcd.io"]
+    resources: ["kustomizations"]
+    verbs: ["get", "list"]
+  - apiGroups: ["argoproj.io"]
+    resources: ["applications"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: agent-cluster-reader
+subjects:
+  - kind: ServiceAccount
+    name: namespace-agent
+    namespace: agents
+roleRef:
+  kind: ClusterRole
+  name: agent-cluster-reader
+  apiGroup: rbac.authorization.k8s.io
+---
+# "The namespaced verbs it needs inside the namespaces it owns."
+# Not bound cluster-wide: Kyverno generates a RoleBinding to this ClusterRole
+# inside every team-* namespace (policies/40-generate-agent-rolebinding.yaml).
+# Deliberately excludes RBAC, quotas, limitranges, networkpolicies and secrets.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: agent-workload-editor
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+# ---------------------------------------------------------------------------
+# Write identity for the GitOps path. Only Flux's kustomize-controller
+# impersonates it, when applying a *merged and reviewed* commit. The
+# interactive agent never holds this credential.
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: gitops-applier
+  namespace: agents
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: gitops-namespace-applier
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    # patch/update for server-side apply, delete for pruning removed tenants.
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: gitops-namespace-applier
+subjects:
+  - kind: ServiceAccount
+    name: gitops-applier
+    namespace: agents
+roleRef:
+  kind: ClusterRole
+  name: gitops-namespace-applier
+  apiGroup: rbac.authorization.k8s.io
