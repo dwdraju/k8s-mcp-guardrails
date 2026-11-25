@@ -1,0 +1,38 @@
+# Kubernetes audit policy for the POC.
+# RequestResponse for namespace + RBAC resources (the article's requirement),
+# Request for pods (so privileged-pod attempts are recorded), and Metadata for
+# anything else the agent identities do. Everything else is dropped to keep the
+# log readable.
+apiVersion: audit.k8s.io/v1
+kind: Policy
+omitStages: ["RequestReceived"]
+rules:
+  # Ignore read-only noise from controllers.
+  - level: None
+    verbs: ["get", "list", "watch"]
+    userGroups: ["system:nodes", "system:serviceaccounts:kube-system", "system:serviceaccounts:kyverno", "system:serviceaccounts:flux-system"]
+  - level: None
+    resources:
+      - group: "coordination.k8s.io"
+        resources: ["leases"]
+  - level: None
+    resources:
+      - group: ""
+        resources: ["events"]
+  # Sensitive resources: full request and response bodies.
+  - level: RequestResponse
+    verbs: ["create", "update", "patch", "delete", "deletecollection"]
+    resources:
+      - group: ""
+        resources: ["namespaces"]
+      - group: "rbac.authorization.k8s.io"
+        resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+  - level: Request
+    verbs: ["create", "update", "patch"]
+    resources:
+      - group: ""
+        resources: ["pods"]
+  # Anything else done by the agent identities.
+  - level: Metadata
+    userGroups: ["system:serviceaccounts:agents"]
+  - level: None

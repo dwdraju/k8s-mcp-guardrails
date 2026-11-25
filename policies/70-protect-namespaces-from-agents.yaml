@@ -1,0 +1,30 @@
+# Agents may only ever delete namespaces that an agent provisioned.
+# The interactive agent has no delete verb at all (RBAC); this covers the
+# GitOps applier, whose prune permission must not reach kube-system & co.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: protect-namespaces-from-agents
+spec:
+  background: false
+  webhookConfiguration:
+    failurePolicy: Fail
+  rules:
+    - name: only-agent-provisioned
+      match:
+        any:
+          - resources:
+              kinds: ["Namespace"]
+              operations: ["DELETE"]
+            subjects:
+              - kind: Group
+                name: system:serviceaccounts:agents
+      validate:
+        failureAction: Audit
+        message: "Agents may not delete namespace {{request.oldObject.metadata.name}}: it was not provisioned by an agent."
+        deny:
+          conditions:
+            all:
+              - key: "{{ request.oldObject.metadata.labels.\"provisioned-via\" || '' }}"
+                operator: AnyNotIn
+                value: ["gitops", "direct"]

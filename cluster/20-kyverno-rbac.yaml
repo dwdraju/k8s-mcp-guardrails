@@ -1,0 +1,50 @@
+# Extra permissions Kyverno's controllers need for the policy pack.
+# Aggregated into the chart's ClusterRoles via their aggregation labels.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kyverno:background-controller:agent-guardrails
+  labels:
+    rbac.kyverno.io/aggregate-to-background-controller: "true"
+rules:
+  # Generate quota / limitrange / default-deny netpol in new namespaces.
+  - apiGroups: [""]
+    resources: ["resourcequotas", "limitranges"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Generate the agent RoleBinding. "bind" on exactly one ClusterRole avoids
+  # granting Kyverno the role's permissions themselves.
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["rolebindings"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterroles"]
+    verbs: ["bind"]
+    resourceNames: ["agent-workload-editor"]
+---
+# TTL cleanup: Kyverno's cleanup controller deletes anything carrying the
+# cleanup.kyverno.io/ttl label once it expires -- including namespaces.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kyverno:cleanup-controller:agent-guardrails
+  labels:
+    rbac.kyverno.io/aggregate-to-cleanup-controller: "true"
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch", "delete"]
+---
+# Lets the reports controller produce PolicyReports for the binding policy.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kyverno:reports-controller:agent-guardrails
+  labels:
+    rbac.kyverno.io/aggregate-to-reports-controller: "true"
+rules:
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["rolebindings", "clusterrolebindings"]
+    verbs: ["get", "list", "watch"]

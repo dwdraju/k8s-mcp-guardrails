@@ -1,0 +1,36 @@
+# Privilege safety: nobody but a real cluster admin may bind
+# cluster-admin. Covers a hallucinated manifest slipping through a PR as well
+# as a direct API call.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: deny-cluster-admin-bindings
+spec:
+  background: false
+  webhookConfiguration:
+    failurePolicy: Fail
+  rules:
+    - name: no-cluster-admin
+      match:
+        any:
+          - resources:
+              kinds: ["RoleBinding", "ClusterRoleBinding"]
+              operations: ["CREATE", "UPDATE"]
+      exclude:
+        any:
+          # Human cluster admins (kubeadm >= 1.29 puts the admin kubeconfig in
+          # kubeadm:cluster-admins instead of system:masters).
+          - subjects:
+              - kind: Group
+                name: system:masters
+              - kind: Group
+                name: kubeadm:cluster-admins
+      validate:
+        failureAction: Audit
+        message: "Binding {{request.object.metadata.name}} to cluster-admin is not allowed."
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.roleRef.name }}"
+                operator: Equals
+                value: cluster-admin

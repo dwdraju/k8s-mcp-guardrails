@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "namespace-agent": {
+      "command": "bash",
+      "args": ["-c", "source scripts/mcp-env.sh && exec mcp-server/.venv/bin/python mcp-server/server.py"],
+      "env": {
+        "WRITE_MODE": "gitops"
+      }
+    }
+  }
+}

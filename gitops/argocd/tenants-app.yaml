@@ -1,0 +1,57 @@
+# Layer 1 (Argo-level): the project only lets Argo sync Namespaces from the
+# tenants repo. Anything else in git -- a ClusterRoleBinding, a Deployment --
+# is refused by Argo before a request reaches the API server.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: tenants
+  namespace: argocd
+spec:
+  description: Agent-provisioned team namespaces
+  sourceRepos:
+    - http://gitea:3000/platform/tenants.git
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: "*"
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  namespaceResourceWhitelist: []
+  # Layer 2 (cluster-level): sync impersonation. Every apply/prune runs as
+  # agents/gitops-applier, so RBAC + Kyverno see the restricted identity.
+  destinationServiceAccounts:
+    - server: https://kubernetes.default.svc
+      namespace: "*"
+      defaultServiceAccount: agents:gitops-applier
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tenants
+  namespace: argocd
+spec:
+  project: tenants
+  source:
+    repoURL: http://gitea:3000/platform/tenants.git
+    targetRevision: main
+    path: tenants
+    directory:
+      exclude: ".gitkeep"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: agents
+  syncPolicy:
+    automated:
+      prune: true      # deleting a file in git deletes the namespace
+      selfHeal: true   # drift detection: out-of-band changes are reverted
+      # Zero tenants is a valid state. Without this, Argo refuses to auto-prune
+      # the last remaining namespace (it won't sync an app down to empty).
+      allowEmpty: true
+    syncOptions:
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 1m

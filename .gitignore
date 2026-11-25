@@ -1,0 +1,5 @@
+.secrets/
+audit/*.log
+audit/*.jsonl
+mcp-server/.venv/
+__pycache__/

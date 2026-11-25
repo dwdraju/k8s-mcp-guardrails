@@ -1,0 +1,33 @@
+# With a requests quota in place, pods without requests are rejected; the
+# LimitRange supplies defaults and caps any single container.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: generate-limitrange
+spec:
+  rules:
+    - name: add-limitrange
+      match:
+        any:
+          - resources:
+              kinds: ["Namespace"]
+              names: ["team-*"]
+      generate:
+        apiVersion: v1
+        kind: LimitRange
+        name: default-limits
+        namespace: "{{request.object.metadata.name}}"
+        synchronize: true
+        data:
+          spec:
+            limits:
+              - type: Container
+                defaultRequest:
+                  cpu: 100m
+                  memory: 128Mi
+                default:
+                  cpu: 500m
+                  memory: 512Mi
+                max:
+                  cpu: "2"
+                  memory: 4Gi

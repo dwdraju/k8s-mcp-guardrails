@@ -1,0 +1,83 @@
+# Naming and ownership: nothing anonymous gets created by an agent.
+# Applies to every request made by an identity in the `agents` namespace
+# (the interactive MCP agent AND the GitOps applier).
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: agent-namespace-naming
+  annotations:
+    policies.kyverno.io/title: Agent namespace naming and ownership
+    policies.kyverno.io/description: >-
+      Agent-created namespaces must match team-<team>-<env>-<id> (env is never
+      prod) and carry owner, ttl and cost-center labels.
+spec:
+  background: false          # uses request.userInfo
+  webhookConfiguration:
+    failurePolicy: Fail      # webhook outage must not silently disable guardrails
+  rules:
+    - name: name-pattern
+      match:
+        any:
+          - resources:
+              kinds: ["Namespace"]
+              operations: ["CREATE", "UPDATE"]
+            subjects:
+              - kind: Group
+                name: system:serviceaccounts:agents
+      validate:
+        failureAction: Audit
+        message: >-
+          Namespace '{{request.object.metadata.name}}' rejected: agents may only
+          create namespaces named team-<team>-<env>-<id>, where team is 2-12
+          lowercase alphanumerics, env is one of dev|staging|preview|sandbox
+          (never prod) and id is 4-8 lowercase alphanumerics.
+        deny:
+          conditions:
+            any:
+              - key: "{{ regex_match('^team-[a-z0-9]{2,12}-(dev|staging|preview|sandbox)-[a-z0-9]{4,8}$', '{{request.object.metadata.name}}') }}"
+                operator: Equals
+                value: false
+    - name: required-labels
+      match:
+        any:
+          - resources:
+              kinds: ["Namespace"]
+              operations: ["CREATE", "UPDATE"]
+            subjects:
+              - kind: Group
+                name: system:serviceaccounts:agents
+      validate:
+        failureAction: Audit
+        message: >-
+          Namespace '{{request.object.metadata.name}}' rejected: labels owner,
+          cost-center and ttl are required, and ttl must be a duration between
+          1m and 999h written as <n>m or <n>h (e.g. 30m, 4h).
+        pattern:
+          metadata:
+            labels:
+              owner: "?*"
+              cost-center: "?*"
+              ttl: "?*"
+    - name: ttl-format
+      match:
+        any:
+          - resources:
+              kinds: ["Namespace"]
+              operations: ["CREATE", "UPDATE"]
+            subjects:
+              - kind: Group
+                name: system:serviceaccounts:agents
+      preconditions:
+        all:
+          - key: "{{ request.object.metadata.labels.ttl || '' }}"
+            operator: NotEquals
+            value: ""
+      validate:
+        failureAction: Audit
+        message: "ttl label '{{request.object.metadata.labels.ttl}}' must look like 30m or 4h (1m..999h)."
+        deny:
+          conditions:
+            any:
+              - key: "{{ regex_match('^[1-9][0-9]{0,2}[mh]$', '{{request.object.metadata.labels.ttl}}') }}"
+                operator: Equals
+                value: false

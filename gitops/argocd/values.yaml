@@ -1,0 +1,21 @@
+# Minimal Argo CD for the POC: controller, repo-server, server, redis.
+# SSO, notifications and ApplicationSets are not needed.
+dex:
+  enabled: false
+notifications:
+  enabled: false
+applicationSet:
+  replicas: 0
+configs:
+  cm:
+    # Apply synced changes AS the destination ServiceAccount named in the
+    # AppProject (agents/gitops-applier), never as Argo's own controller SA.
+    # The Flux equivalent is Kustomization.spec.serviceAccountName.
+    application.sync.impersonation.enabled: true
+    # Reconcile quickly so the demo doesn't wait for the default 3m poll.
+    timeout.reconciliation: 30s
+  params:
+    server.insecure: true
+    # Diff via server-side dry run, so labels Kyverno adds at admission
+    # (Pod Security, cleanup TTL) are not reported as drift.
+    controller.diff.server.side: true

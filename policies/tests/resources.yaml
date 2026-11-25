@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: team-payments-dev-a1b2
+  labels: {owner: alice, cost-center: cc-1234, ttl: 4h, provisioned-via: direct}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: payments-prod
+  labels: {owner: alice, cost-center: cc-1234, ttl: 4h}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: team-payments-prod-a1b2
+  labels: {owner: alice, cost-center: cc-1234, ttl: 4h}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: team-payments-dev-nolab
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: team-payments-dev-badttl
+  labels: {owner: alice, cost-center: cc-1234, ttl: forever}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: agent-is-root
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: cluster-admin}
+subjects: [{kind: ServiceAccount, name: namespace-agent, namespace: agents}]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: agent-can-view
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: view}
+subjects: [{kind: ServiceAccount, name: namespace-agent, namespace: agents}]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: root-shell
+  namespace: team-payments-dev-a1b2
+spec:
+  hostPID: true
+  containers:
+    - name: sh
+      image: busybox
+      securityContext: {privileged: true}
+  volumes:
+    - name: host
+      hostPath: {path: /}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web
+  namespace: team-payments-dev-a1b2
+spec:
+  containers:
+    - name: web
+      image: nginx

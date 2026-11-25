@@ -1,0 +1,33 @@
+# Privilege safety for workloads, in addition to Pod Security Admission
+# "restricted" (set by mutate-namespace-baseline). Kyverno auto-generates the
+# matching rules for Deployments, StatefulSets, Jobs, etc.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-privileged-workloads
+spec:
+  webhookConfiguration:
+    failurePolicy: Fail
+  rules:
+    - name: no-privileged-or-host-access
+      match:
+        any:
+          - resources:
+              kinds: ["Pod"]
+              namespaces: ["team-*"]
+      validate:
+        failureAction: Audit
+        message: "Privileged containers, hostPath volumes and host namespaces are not allowed in team namespaces."
+        pattern:
+          spec:
+            =(hostNetwork): false
+            =(hostPID): false
+            =(hostIPC): false
+            =(volumes):
+              - X(hostPath): "null"
+            =(initContainers):
+              - =(securityContext):
+                  =(privileged): false
+            containers:
+              - =(securityContext):
+                  =(privileged): false
