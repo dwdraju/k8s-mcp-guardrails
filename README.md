@@ -78,7 +78,7 @@ Agent tokens expire after one hour. To get a new one, run `scripts/agent-kubecon
 | Audit mode first, Kyverno CLI tests in CI, then Enforce | `scripts/policy-mode.sh audit\|enforce`; `kyverno test policies/tests/` (13 cases) |
 | Webhook `failurePolicy: Fail` | Set on every validating and mutating policy |
 | Writes through git, CODEOWNERS approval, Argo CD/Flux, drift detection | Gitea `platform/tenants`: `main` is protected, needs 1 approval from `platform-admin`, and the agent can't push or merge. **Flux** (`gitops/flux/`) or **Argo CD** (`gitops/argocd/`) syncs it with prune and self-heal |
-| Audit logging at RequestResponse for namespaces and RBAC | `kind/audit-policy.yaml` writes to `audit/audit.log`. Every MCP tool call is also logged to `audit/mcp-tool-calls.jsonl` |
+| Audit logging at RequestResponse for namespaces and RBAC | `kind/audit-policy.yaml` writes to `audit/audit.log`. Read it with `scripts/audit-log.sh [-f]`. Every MCP tool call is also logged to `audit/mcp-tool-calls.jsonl` |
 | **Red-team**: privileged pod, cluster-admin CRB, namespace with no quota, deleting an existing namespace — all rejected, all in the audit log | `scripts/redteam.py`, plus two attacks through git that a careless reviewer merges: a cluster-admin binding, and a takeover of `kube-system` |
 
 ## Flux or Argo CD
@@ -140,6 +140,7 @@ A compliant Deployment (non-root, seccomp, no capabilities) in the same namespac
 - **TTL for gitops namespaces.** The cleanup controller only expires namespaces created in direct mode. If it deleted a gitops-managed namespace, the GitOps engine would just recreate it from git. Gitops environments expire through a reviewed PR that deletes `tenants/<ns>.yaml`; the engine then prunes the namespace. The tool tells the agent this.
 - **Only the cluster enforces anything.** The server's input checks just give the model faster feedback. Every rule is enforced again by RBAC and admission (see the red-team run, which bypasses the server's checks completely).
 - **Sandbox-specific workarounds** in `kind/cluster.yaml` and `up.sh`: `/dev/null` is mounted as `/dev/kmsg` because this nested VM has no `/dev/kmsg`, and any CA under `/usr/local/share/ca-certificates` is trusted inside the node so images pull through a TLS-intercepting proxy. Both are harmless on a normal machine.
+- **The audit log is root-only on most hosts.** kube-apiserver runs as root in the kind node and creates `audit/audit.log` as `root:root 0600`. `scripts/audit-log.sh` and `redteam.py` read it from inside the node with `docker exec`, so they don't need sudo. `down.sh` deletes it the same way.
 - The Gitea passwords in `scripts/gitea-setup.sh` are demo values for a local-only container. API tokens are written to `.secrets/`, which git ignores.
 - kindnet enforces NetworkPolicy, but this POC only checks that the default-deny policy exists. It doesn't run traffic tests.
 
@@ -154,5 +155,5 @@ gitops/        flux/ (GitRepository+Kustomization), argocd/ (Helm values, AppPro
 mcp-server/    server.py (MCP server), client.py (scriptable stdio client)
 scripts/       up/down, agent-kubeconfig, policy-mode, gitea/flux/argocd setup,
                gitops-engine (switch), gitops-sync, approve-pr, e2e.sh, redteam.py, mcp-env.sh
-audit/         audit.log (Kubernetes) + mcp-tool-calls.jsonl (MCP server)
+audit/         audit.log (Kubernetes; read via scripts/audit-log.sh) + mcp-tool-calls.jsonl (MCP server)
 ```

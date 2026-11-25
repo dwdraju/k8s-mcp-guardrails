@@ -42,6 +42,7 @@ from mcp.client.stdio import StdioServerParameters  # noqa: E402
 
 ADMIN_KUBECONFIG = os.path.expanduser("~/.kube/config")
 AUDIT_LOG = os.path.join(POC, "audit", "audit.log")
+AUDIT_LOG_READER = os.path.join(POC, "scripts", "audit-log.sh")
 GITEA = "http://localhost:3000/api/v1/repos/platform/tenants"
 
 GREEN, RED, BOLD, DIM, RST = "\033[32m", "\033[31m", "\033[1m", "\033[2m", "\033[0m"
@@ -272,29 +273,36 @@ metadata:
     print(f"\n{BOLD}Audit log:{RST} denied requests by agent identities since {start:%H:%M:%S}")
     time.sleep(3)  # audit backend flushes asynchronously
     denied = []
-    with open(AUDIT_LOG) as fh:
-        for line in fh:
-            ev = json.loads(line)
-            if ev.get("stage") != "ResponseComplete":
-                continue
-            if dt.datetime.fromisoformat(ev["stageTimestamp"].replace("Z", "+00:00")) < start:
-                continue
-            user = ev.get("impersonatedUser", {}).get("username") or ev["user"]["username"]
-            if not user.startswith("system:serviceaccount:agents:"):
-                continue
-            code = ev.get("responseStatus", {}).get("code", 0)
-            if code < 400 or ev["verb"] in ("get", "list", "watch"):
-                continue
-            ref = ev.get("objectRef", {})
-            why = "RBAC" if ev.get("annotations", {}).get("authorization.k8s.io/decision") == "forbid" else "admission"
-            # RBAC denies a create before the body is decoded, so the name is
-            # unknown for those; the resource, verb and namespace still are.
-            name = ref.get("name") or (ev.get("requestObject") or {}).get("metadata", {}).get("name") or "<unread body>"
-            denied.append({
-                "time": ev["stageTimestamp"][11:19], "user": user.split(":")[-1], "verb": ev["verb"],
-                "resource": ref.get("resource"), "namespace": ref.get("namespace", ""), "name": name,
-                "code": code, "by": why,
-            })
+    # audit.log is root:root 0600 on most Docker hosts; audit-log.sh falls back
+    # to reading it from inside the kind node.
+    p = subprocess.run([AUDIT_LOG_READER], capture_output=True, text=True)
+    if p.returncode != 0:
+        print(f"{RED}cannot read the audit log: {p.stderr.strip()}{RST}")
+        return 1
+    for line in p.stdout.splitlines():
+        if not line.strip():
+            continue
+        ev = json.loads(line)
+        if ev.get("stage") != "ResponseComplete":
+            continue
+        if dt.datetime.fromisoformat(ev["stageTimestamp"].replace("Z", "+00:00")) < start:
+            continue
+        user = ev.get("impersonatedUser", {}).get("username") or ev["user"]["username"]
+        if not user.startswith("system:serviceaccount:agents:"):
+            continue
+        code = ev.get("responseStatus", {}).get("code", 0)
+        if code < 400 or ev["verb"] in ("get", "list", "watch"):
+            continue
+        ref = ev.get("objectRef", {})
+        why = "RBAC" if ev.get("annotations", {}).get("authorization.k8s.io/decision") == "forbid" else "admission"
+        # RBAC denies a create before the body is decoded, so the name is
+        # unknown for those; the resource, verb and namespace still are.
+        name = ref.get("name") or (ev.get("requestObject") or {}).get("metadata", {}).get("name") or "<unread body>"
+        denied.append({
+            "time": ev["stageTimestamp"][11:19], "user": user.split(":")[-1], "verb": ev["verb"],
+            "resource": ref.get("resource"), "namespace": ref.get("namespace", ""), "name": name,
+            "code": code, "by": why,
+        })
     for d in denied:
         where = f"{d['namespace']}/" if d["namespace"] else ""
         print(f"  {d['time']}  {d['user']:16} {d['verb']:7} {d['resource'] + '/' + where + d['name']:62} {d['code']} {d['by']}")

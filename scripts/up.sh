@@ -80,7 +80,7 @@ Cluster:     kind-$CLUSTER (admin kubeconfig: ~/.kube/config)
 GitOps:      $GITOPS_ENGINE   (switch: scripts/gitops-engine.sh flux|argocd)
 Agent token: .secrets/agent.kubeconfig (expires in 1h; refresh: scripts/agent-kubeconfig.sh > .secrets/agent.kubeconfig)
 Gitea:       http://localhost:3000/platform/tenants  (platform-admin / Admin-Passw0rd!)
-Audit log:   audit/audit.log   MCP tool-call log: audit/mcp-tool-calls.jsonl
+Audit log:   scripts/audit-log.sh [-f]   MCP tool-call log: audit/mcp-tool-calls.jsonl
 
 Next:
   scripts/e2e.sh                                    # happy paths through the MCP server
